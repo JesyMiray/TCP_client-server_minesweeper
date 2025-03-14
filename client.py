@@ -21,7 +21,6 @@ class MinesweeperClient:
         self.buttons = [[None] * FIELD_SIZE for _ in range(FIELD_SIZE)]
         self.mines = set()
         self.is_placing_mines = True
-        self.is_my_turn = False
         self.game_over = False
 
         self.info_label = tk.Label(self.root, text="Ожидание второго игрока...")
@@ -49,30 +48,24 @@ class MinesweeperClient:
                 self.buttons[x][y].config(text="M", state=tk.DISABLED)
                 if len(self.mines) == 5:
                     self.send_mines()
-        elif self.is_my_turn:
+        else:
             self.send_move(x, y)
 
     def send_mines(self):
         mine_str = ";".join(f"{x},{y}" for x, y in self.mines)
         self.client.sendall(mine_str.encode())
         self.is_placing_mines = False
-        self.info_label.config(text="Ожидаем начала игры...")
+        self.info_label.config(text="Игра началась! Кликайте по клеткам.")
 
     def send_move(self, x, y):
         self.client.sendall(f"{x},{y}".encode())
-        self.is_my_turn = False
-        self.disable_buttons()
 
     def wait_for_message(self):
         def receive():
             while True:
                 try:
                     message = self.client.recv(1024).decode()
-                    if "Ваш ход!" in message:
-                        self.is_my_turn = True
-                        self.info_label.config(text="Ваш ход! Выберите клетку")
-                        self.enable_buttons()
-                    elif "Вы попали на мину" in message:
+                    if "Вы попали на мину" in message:
                         x, y = map(int, message.split(":")[-1].split(","))
                         self.buttons[x][y].config(text="X", bg="red", state=tk.DISABLED)
                     elif "Выход чист" in message:
@@ -81,23 +74,12 @@ class MinesweeperClient:
                     elif "Вы проиграли" in message or "Вы победили" in message:
                         self.game_over = True
                         messagebox.showinfo("Игра окончена", message)
-                        self.disable_buttons()
                     else:
                         self.info_label.config(text=message)
                 except:
                     break
 
         threading.Thread(target=receive, daemon=True).start()
-
-    def enable_buttons(self):
-        for x in range(FIELD_SIZE):
-            for y in range(FIELD_SIZE):
-                self.buttons[x][y].config(state=tk.NORMAL)
-
-    def disable_buttons(self):
-        for x in range(FIELD_SIZE):
-            for y in range(FIELD_SIZE):
-                self.buttons[x][y].config(state=tk.DISABLED)
 
 
 if __name__ == "__main__":

@@ -6,17 +6,14 @@ FIELD_SIZE = 5
 MINES_COUNT = 5
 
 players = {}
-turn_order = []
 connections = []
 lock = threading.Lock()
-
 game_active = True
 
 def handle_client(conn, addr, player_id):
-    global players, turn_order, game_active
+    global players, game_active
 
     print(f"Игрок {player_id} подключился: {addr}")
-
     conn.sendall("Ожидаем второго игрока...\n".encode())
 
     while len(players) < 2:
@@ -34,40 +31,34 @@ def handle_client(conn, addr, player_id):
     while len(players[1]["mines"]) < MINES_COUNT or len(players[2]["mines"]) < MINES_COUNT:
         time.sleep(0.1)
 
-    conn.sendall("Мины расставлены. Начинаем игру!\n".encode())
-
-    if player_id == turn_order[0]:
-        conn.sendall("Ваш ход! Введите координаты для атаки (x,y): ".encode())
+    conn.sendall("Мины расставлены. Игра началась! Кликайте по клеткам.\n".encode())
 
     while game_active:
-        if turn_order[0] != player_id:
-            time.sleep(0.1)
-            continue
+        try:
+            move = conn.recv(1024).decode().strip()
+            if not move:
+                continue
 
-        conn.sendall("Ваш ход! Введите координаты для атаки (x,y): ".encode())
-        move = conn.recv(1024).decode().strip()
-        x, y = map(int, move.split(","))
+            x, y = map(int, move.split(","))
+            opponent = 2 if player_id == 1 else 1
+            hit = (x, y) in players[opponent]["mines"]
 
-        #проверяем на попадание
-        opponent = 2 if player_id == 1 else 1
-        hit = (x, y) in players[opponent]["mines"]
+            with lock:
+                if hit:
+                    players[player_id]["hits"].add((x, y))
+                    conn.sendall(f"Вы попали на мину: {x},{y}\n".encode())
+                else:
+                    conn.sendall(f"Выход чист: {x},{y}\n".encode())
 
-        if hit:
-            players[player_id]["hits"].add((x, y))
-            conn.sendall(f"Вы попали на мину: {x},{y}\n".encode())
-        else:
-            conn.sendall(f"Выход чист: {x},{y}\n".encode())
+                # Проверяем поражение
+                if players[player_id]["hits"] == players[opponent]["mines"]:
+                    conn.sendall("Вы проиграли!\n".encode())
+                    connections[opponent - 1].sendall("Вы победили!\n".encode())
+                    game_active = False
+                    break
 
-        #проверяем на поражение
-        if players[player_id]["hits"] == players[opponent]["mines"]:
-            conn.sendall("Вы проиграли!\n".encode())
-            connections[opponent - 1].sendall("Вы победили!\n".encode())
-            game_active = False
+        except:
             break
-
-        #передаём ход другому игроку
-        with lock:
-            turn_order.reverse()
 
     conn.close()
 
@@ -88,9 +79,6 @@ def main():
             players[player_id] = {"mines": set(), "hits": set()}  
         connections.append(conn)
         threading.Thread(target=handle_client, args=(conn, addr, player_id)).start()
-
-    turn_order.append(1)
-    turn_order.append(2)
 
 
 if __name__ == "__main__":
