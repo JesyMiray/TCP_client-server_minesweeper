@@ -45,7 +45,7 @@ class MinesweeperClient:
         if self.is_placing_mines:
             if len(self.mines) < 5:
                 self.mines.add((x, y))
-                self.buttons[x][y].config(text="M", state=tk.DISABLED)
+                self.buttons[x][y].config(text="M")
                 if len(self.mines) == 5:
                     self.send_mines()
         else:
